@@ -1,13 +1,3 @@
-ملاحظة ممتازة! الكود السابق يتعامل بالفعل مع **الصور و المستندات (PDF)** في قسم الشيتات بدون أي مشكلة، ولكن لتخصيص التجربة للطلاب بحيث عند الضغط على الشيت يعرض لهم الصورة مباشرة بشكل ممتاز وتفاعلي، قمت بتحديث الكود.
-
-### التحديثات المضافة:
-
-1. **دعم كامل للصور:** عند رفع الأدمن للشيت كـ (صورة أو آلبوم صور أو PDF)، يحفظ البوت المعرف الخاص بها ويقوم بإرسالها للطالب كـ **صورة صريحة (Photo)** بدلاً من مستند.
-2. **عرض زر الذكاء الاصطناعي أسفل الصورة مباشرة:** يظهر زر الاختبار الأكاديمي أسفل الشيت المصور فوراً.
-
-إليك كود `main.py` المعدل والمحدث بالكامل:
-
-```python
 import json
 import os
 import logging
@@ -41,7 +31,7 @@ else:
 user_quiz_state = {}
 
 # حالات محادثة الأدمن
-SELECT_TYPE, SELECT_SUBJECT, INPUT_LEC_NUM, UPLOAD_FILE = range(4)
+SELECT_ACTION, SELECT_TYPE, SELECT_SUBJECT, INPUT_LEC_NUM, UPLOAD_FILE, DELETE_LEC_NUM = range(6)
 
 # ----------------- إدارة ملف البيانات JSON -----------------
 def load_data():
@@ -185,7 +175,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         ]
         
         if file_id:
-            # إرسال الملف كصورة إذا كانت صورة، أو كمستند
             try:
                 await query.message.reply_photo(
                     photo=file_id, 
@@ -317,7 +306,7 @@ async def handle_student_answer(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 # =====================================================================
-# 2. لوحة تحكم الأدمن الديناميكية (ADMIN PANEL)
+# 2. لوحة تحكم الأدمن (ADMIN PANEL) WITH DELETE SUPPORT
 # =====================================================================
 
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -327,12 +316,37 @@ async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     keyboard = [
-        [InlineKeyboardButton("🎙 Upload Audio Recording", callback_data="type_recordings")],
-        [InlineKeyboardButton("🖼 Upload Sheet (Photo)", callback_data="type_sheets")],
+        [InlineKeyboardButton("📤 Upload Content", callback_data="action_upload")],
+        [InlineKeyboardButton("🗑 Delete Content", callback_data="action_delete")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
     ]
     await update.message.reply_text(
-        "⚙️ **Admin Control Panel**\n\nSelect the content type to upload:",
+        "⚙️ **Admin Control Panel**\n\nSelect an action:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+    return SELECT_ACTION
+
+async def admin_select_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "cancel_admin":
+        await query.message.edit_text("❌ Operation canceled.")
+        return ConversationHandler.END
+
+    action = query.data.split("_")[1]
+    context.user_data['admin_action'] = action
+
+    keyboard = [
+        [InlineKeyboardButton("🎙 Recordings", callback_data="type_recordings")],
+        [InlineKeyboardButton("🖼 Sheets (Photos)", callback_data="type_sheets")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
+    ]
+    
+    action_str = "Upload" if action == "upload" else "Delete"
+    await query.message.edit_text(
+        f"📂 Select Category to **{action_str}**:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -354,9 +368,9 @@ async def admin_select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Criminal Law (criminal)", callback_data="sub_criminal")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
     ]
-    type_label = "Audio" if content_type == "recordings" else "Sheet Photo"
+    
     await query.message.edit_text(
-        f"📂 Select Subject for ({type_label}):",
+        f"📂 Select Subject:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
     return SELECT_SUBJECT
@@ -371,12 +385,30 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
 
     subject = query.data.split("_")[1]
     context.user_data['upload_subject'] = subject
+    action = context.user_data.get('admin_action')
 
-    await query.message.edit_text(
-        f"📖 Please send/type the **Lecture Number** (e.g. `1`, `2`, `7`):\n\nType /cancel to abort.",
-        parse_mode="Markdown"
-    )
-    return INPUT_LEC_NUM
+    if action == "delete":
+        content_type = context.user_data['upload_type']
+        available = data_db.get(content_type, {}).get(subject, {})
+        
+        if not available:
+            await query.message.edit_text(f"⚠️ No content found for `{subject}` to delete.", parse_mode="Markdown")
+            return ConversationHandler.END
+            
+        lecs_str = ", ".join(sorted(available.keys(), key=lambda x: int(x) if x.isdigit() else x))
+        await query.message.edit_text(
+            f"🗑 **Delete Content**\nAvailable lectures for `{subject}`: `{lecs_str}`\n\n"
+            f"Please type the Lecture Number you want to DELETE (e.g. `1`, `2`):",
+            parse_mode="Markdown"
+        )
+        return DELETE_LEC_NUM
+
+    else:
+        await query.message.edit_text(
+            f"📖 Please send/type the **Lecture Number** (e.g. `1`, `2`, `7`):\n\nType /cancel to abort.",
+            parse_mode="Markdown"
+        )
+        return INPUT_LEC_NUM
 
 async def admin_input_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lec_num = update.message.text.strip()
@@ -428,13 +460,26 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     save_data(data_db)
 
     await update.message.reply_text(
-        f"✅ **Sheet Photo Successfully Uploaded & Saved!**\n\n"
+        f"✅ **Successfully Uploaded & Saved!**\n\n"
         f"• Category: `{content_type}`\n"
         f"• Subject: `{subject}`\n"
-        f"• Lecture: `{lec_num}`\n"
-        f"• File ID: `{file_id}`",
+        f"• Lecture: `{lec_num}`",
         parse_mode="Markdown"
     )
+
+    return ConversationHandler.END
+
+async def admin_delete_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lec_num = update.message.text.strip()
+    content_type = context.user_data['upload_type']
+    subject = context.user_data['upload_subject']
+
+    if subject in data_db.get(content_type, {}) and lec_num in data_db[content_type][subject]:
+        del data_db[content_type][subject][lec_num]
+        save_data(data_db)
+        await update.message.reply_text(f"🗑 **Successfully Deleted** Lecture `{lec_num}` from `{subject}` ({content_type}).", parse_mode="Markdown")
+    else:
+        await update.message.reply_text(f"❌ Lecture `{lec_num}` not found for `{subject}`.", parse_mode="Markdown")
 
     return ConversationHandler.END
 
@@ -457,9 +502,11 @@ if __name__ == '__main__':
     admin_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('admin', admin_start)],
         states={
+            SELECT_ACTION: [CallbackQueryHandler(admin_select_action)],
             SELECT_TYPE: [CallbackQueryHandler(admin_select_type)],
             SELECT_SUBJECT: [CallbackQueryHandler(admin_select_subject)],
             INPUT_LEC_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_input_lecture)],
+            DELETE_LEC_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_delete_lecture)],
             UPLOAD_FILE: [
                 MessageHandler(
                     filters.AUDIO | filters.VOICE | filters.DOCUMENT | filters.PHOTO, 
@@ -479,7 +526,5 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(student_callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_student_answer))
 
-    print("🤖 Bot is running successfully with Dynamic Photo Sheets support...")
+    print("🤖 Bot is running successfully with Dynamic Upload/Delete support...")
     app.run_polling()
-
-```
