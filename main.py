@@ -11,7 +11,7 @@ from telegram.ext import (
     ContextTypes,
     filters
 )
-from google import genai
+import google.generativeai as genai
 
 # ----------------- الإعدادات والبيانات المباشرة -----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8539162576:AAEGk8ooZssZ91Mc7Uv2DlYPvKLOHQtJyIQ")
@@ -20,11 +20,12 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAQ.Ab8RN6KUiJjtaJJQTtBhkzZ5H
 
 DB_FILE = "database.json"
 
-# إعداد عميل الذكاء الاصطناعي Gemini الحديث
+# إعداد نموذج الذكاء الاصطناعي Gemini
 if GEMINI_API_KEY:
-    ai_client = genai.Client(api_key=GEMINI_API_KEY)
+    genai.configure(api_key=GEMINI_API_KEY)
+    ai_model = genai.GenerativeModel('gemini-1.5-flash')
 else:
-    ai_client = None
+    ai_model = None
 
 # تتبع حالة اختبارات الطلاب
 user_quiz_state = {}
@@ -195,7 +196,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
     # ---------------- اختبار الذكاء الاصطناعي ----------------
     elif data.startswith("ai_quiz_"):
         await query.answer()
-        if not ai_client:
+        if not ai_model:
             await query.message.reply_text("⚠️ خيار الذكاء الاصطناعي غير مفعل.")
             return
 
@@ -206,10 +207,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
 
         try:
             prompt = f"قم بتوليد سؤال مقالي دراسي مباشر واحد فقط لمادة {subject} المحاضرة {lec_num}. لا تضف أي إجابات أو خيارات."
-            response = ai_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
+            response = ai_model.generate_content(prompt)
             question = response.text
 
             user_quiz_state[user_id] = {
@@ -280,7 +278,7 @@ async def handle_student_answer(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = update.message.from_user.id
     
     if user_id in user_quiz_state:
-        if not ai_client:
+        if not ai_model:
             await update.message.reply_text("⚠️ خدمة الذكاء الاصطناعي معطلة حالياً.")
             return
 
@@ -299,10 +297,7 @@ async def handle_student_answer(update: Update, context: ContextTypes.DEFAULT_TY
 1. إعطاء نسبة مئوية لصحّة الإجابة (مثال: 85%).
 2. تقديم تصحيح مختصر وملاحظات على الإجابة.
 """
-            response = ai_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-            )
+            response = ai_model.generate_content(prompt)
             await update.message.reply_text(f"📊 **نتيجة التقييم والتصحيح:**\n\n{response.text}", parse_mode="Markdown")
         except Exception as e:
             await update.message.reply_text("❌ حدث خطأ أثناء التصحيح. حاول مرة أخرى.")
@@ -531,5 +526,5 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(student_callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_student_answer))
 
-    print("🤖 Bot is running successfully with Dynamic Upload/Delete support...")
+    print("🤖 Bot is running successfully...")
     app.run_polling()
