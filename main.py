@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,26 +12,23 @@ from telegram.ext import (
     ContextTypes,
     filters
 )
-import google.generativeai as genai
 
-# ----------------- الإعدادات والبيانات المباشرة -----------------
+# ----------------- الإعدادات والمتغيرات -----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8539162576:AAEGk8ooZssZ91Mc7Uv2DlYPvKLOHQtJyIQ")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8744592769"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAQ.Ab8RN6KUiJjtaJJQTtBhkzZ5H61DWmtXcNYe8KcBU6kZ9KiJtA")
 
 DB_FILE = "database.json"
 
-# إعداد نموذج الذكاء الاصطناعي Gemini
+# إعداد نموذج الذكاء الاصطناعي
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     ai_model = genai.GenerativeModel('gemini-1.5-flash')
 else:
     ai_model = None
 
-# تتبع حالة اختبارات الطلاب
 user_quiz_state = {}
 
-# حالات محادثة الأدمن
 SELECT_ACTION, SELECT_TYPE, SELECT_SUBJECT, INPUT_LEC_NUM, UPLOAD_FILE, DELETE_LEC_NUM = range(6)
 
 # ----------------- إدارة ملف البيانات JSON -----------------
@@ -82,7 +80,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await start(update, context)
         return
 
-    # ---------------- قسم التسجيلات ----------------
     if data == "cat_recordings":
         await query.answer()
         keyboard = [
@@ -95,7 +92,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
     elif data.startswith("rec_"):
         await query.answer()
         subject = data.split("_")[1]
-        
         subject_data = data_db.get("recordings", {}).get(subject, {})
         
         if not subject_data:
@@ -104,7 +100,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             return
 
         available_lecs = sorted(subject_data.keys(), key=lambda x: int(x) if x.isdigit() else x)
-        
         keyboard = []
         row = []
         for lec in available_lecs:
@@ -128,7 +123,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         else:
             await query.message.reply_text(f"⚠️ عفواً، لم يتم رفع المحاضرة {lec_num} لهذه المادة بعد.")
 
-    # ---------------- قسم الشيتات (صور) ----------------
     elif data == "cat_sheets":
         await query.answer()
         keyboard = [
@@ -141,7 +135,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
     elif data.startswith("sheet_"):
         await query.answer()
         subject = data.split("_")[1]
-        
         subject_data = data_db.get("sheets", {}).get(subject, {})
         
         if not subject_data:
@@ -150,7 +143,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             return
 
         available_lecs = sorted(subject_data.keys(), key=lambda x: int(x) if x.isdigit() else x)
-        
         keyboard = []
         row = []
         for lec in available_lecs:
@@ -193,7 +185,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
-    # ---------------- اختبار الذكاء الاصطناعي ----------------
     elif data.startswith("ai_quiz_"):
         await query.answer()
         if not ai_model:
@@ -220,10 +211,9 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
                 f"📝 **سؤال المحاضرة {lec_num} ({subject}):**\n\n{question}\n\n✍️ **اكتب إجابتك بالكامل في رسالة نصية:**",
                 parse_mode="Markdown"
             )
-        except Exception as e:
+        except Exception:
             await query.message.reply_text("❌ حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.")
 
-    # ---------------- قسم الامتحانات السابقة ----------------
     elif data == "cat_exams":
         await query.answer()
         keyboard = [
@@ -259,7 +249,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         type_str = "جزئي" if exam_type == "mid" else "نهائي"
         await query.message.reply_text(f"📁 نموذج امتحان {subject} - سنة {year} ({type_str})")
 
-    # ---------------- قسم التواصل المجهول ----------------
     elif data == "cat_anonymous":
         await query.answer()
         keyboard = [
@@ -267,16 +256,13 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")]
         ]
         await query.message.edit_text(
-            "📬 **تواصل عبر مجهول**\n\n"
-            "يمكنك إرسال ملاحظاتك، استفساراتك، أو اقتراحاتك بشكل مجهول تماماً عن طريق الضغط على الزر أدناه:",
+            "📬 **تواصل عبر مجهول**\n\nيمكنك إرسال ملاحظاتك أو استفساراتك عبر الزر أدناه:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
 
-# تصحيح إجابات الطلاب عبر Gemini
 async def handle_student_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    
     if user_id in user_quiz_state:
         if not ai_model:
             await update.message.reply_text("⚠️ خدمة الذكاء الاصطناعي معطلة حالياً.")
@@ -284,23 +270,14 @@ async def handle_student_answer(update: Update, context: ContextTypes.DEFAULT_TY
 
         state = user_quiz_state[user_id]
         user_answer = update.message.text
-        
-        await update.message.reply_text("🔍 جاري تصحيح إجابتك وتقييمها بواسطة الذكاء الاصطناعي...")
+        await update.message.reply_text("🔍 جاري تصحيح إجابتك وتقييمها...")
 
         try:
-            prompt = f"""
-أنت أستاذ جامعي ومصحح أكاديمي.
-السؤال: {state['question']}
-إجابة الطالب: {user_answer}
-
-المطلوب:
-1. إعطاء نسبة مئوية لصحّة الإجابة (مثال: 85%).
-2. تقديم تصحيح مختصر وملاحظات على الإجابة.
-"""
+            prompt = f"أنت مصحح أكاديمي.\nالسؤال: {state['question']}\nإجابة الطالب: {user_answer}\nقم بإعطاء نسبة مئوية وتصحيح مختصر."
             response = ai_model.generate_content(prompt)
             await update.message.reply_text(f"📊 **نتيجة التقييم والتصحيح:**\n\n{response.text}", parse_mode="Markdown")
-        except Exception as e:
-            await update.message.reply_text("❌ حدث خطأ أثناء التصحيح. حاول مرة أخرى.")
+        except Exception:
+            await update.message.reply_text("❌ حدث خطأ أثناء التصحيح.")
 
         del user_quiz_state[user_id]
 
@@ -312,7 +289,7 @@ async def handle_student_answer(update: Update, context: ContextTypes.DEFAULT_TY
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("⛔ Access Denied: Admin privileges required.")
+        await update.message.reply_text("⛔ Access Denied.")
         return ConversationHandler.END
 
     keyboard = [
@@ -320,11 +297,7 @@ async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗑 Delete Content", callback_data="action_delete")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
     ]
-    await update.message.reply_text(
-        "⚙️ **Admin Control Panel**\n\nSelect an action:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("⚙️ **Admin Control Panel**\nSelect an action:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     return SELECT_ACTION
 
 async def admin_select_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -332,7 +305,7 @@ async def admin_select_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
     if query.data == "cancel_admin":
-        await query.message.edit_text("❌ Operation canceled.")
+        await query.message.edit_text("❌ Canceled.")
         return ConversationHandler.END
 
     action = query.data.split("_")[1]
@@ -340,16 +313,10 @@ async def admin_select_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     keyboard = [
         [InlineKeyboardButton("🎙 Recordings", callback_data="type_recordings")],
-        [InlineKeyboardButton("🖼 Sheets (Photos)", callback_data="type_sheets")],
+        [InlineKeyboardButton("🖼 Sheets", callback_data="type_sheets")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
     ]
-    
-    action_str = "Upload" if action == "upload" else "Delete"
-    await query.message.edit_text(
-        f"📂 Select Category to **{action_str}**:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
+    await query.message.edit_text("📂 Select Category:", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECT_TYPE
 
 async def admin_select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -357,22 +324,17 @@ async def admin_select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     if query.data == "cancel_admin":
-        await query.message.edit_text("❌ Operation canceled.")
+        await query.message.edit_text("❌ Canceled.")
         return ConversationHandler.END
 
-    content_type = query.data.split("_")[1]
-    context.user_data['upload_type'] = content_type
+    context.user_data['upload_type'] = query.data.split("_")[1]
 
     keyboard = [
         [InlineKeyboardButton("Civil Law (civil)", callback_data="sub_civil")],
         [InlineKeyboardButton("Criminal Law (criminal)", callback_data="sub_criminal")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
     ]
-    
-    await query.message.edit_text(
-        f"📂 Select Subject:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await query.message.edit_text("📂 Select Subject:", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECT_SUBJECT
 
 async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -380,7 +342,7 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
 
     if query.data == "cancel_admin":
-        await query.message.edit_text("❌ Operation canceled.")
+        await query.message.edit_text("❌ Canceled.")
         return ConversationHandler.END
 
     subject = query.data.split("_")[1]
@@ -392,39 +354,24 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
         available = data_db.get(content_type, {}).get(subject, {})
         
         if not available:
-            await query.message.edit_text(f"⚠️ No content found for `{subject}` to delete.", parse_mode="Markdown")
+            await query.message.edit_text(f"⚠️ No content found for `{subject}`.", parse_mode="Markdown")
             return ConversationHandler.END
             
         lecs_str = ", ".join(sorted(available.keys(), key=lambda x: int(x) if x.isdigit() else x))
-        await query.message.edit_text(
-            f"🗑 **Delete Content**\nAvailable lectures for `{subject}`: `{lecs_str}`\n\n"
-            f"Please type the Lecture Number you want to DELETE (e.g. `1`, `2`):",
-            parse_mode="Markdown"
-        )
+        await query.message.edit_text(f"🗑 Available lectures: `{lecs_str}`\nType lecture number to delete:", parse_mode="Markdown")
         return DELETE_LEC_NUM
-
     else:
-        await query.message.edit_text(
-            f"📖 Please send/type the **Lecture Number** (e.g. `1`, `2`, `7`):\n\nType /cancel to abort.",
-            parse_mode="Markdown"
-        )
+        await query.message.edit_text("📖 Type the Lecture Number (e.g. 1, 2):")
         return INPUT_LEC_NUM
 
 async def admin_input_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lec_num = update.message.text.strip()
-    
     if not lec_num.isdigit():
-        await update.message.reply_text("⚠️ Please enter a valid number for the lecture (e.g. 1, 2, 3).")
+        await update.message.reply_text("⚠️ Enter a valid number.")
         return INPUT_LEC_NUM
 
     context.user_data['upload_lec'] = lec_num
-    content_type = context.user_data['upload_type']
-    file_kind = "Audio File (Audio/Voice)" if content_type == "recordings" else "Photo of Sheet"
-
-    await update.message.reply_text(
-        f"📤 Please upload the **{file_kind}** for Lecture **{lec_num}**:",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(f"📤 Upload the file for Lecture {lec_num}:")
     return UPLOAD_FILE
 
 async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -433,7 +380,6 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lec_num = context.user_data['upload_lec']
 
     file_id = None
-
     if content_type == "recordings":
         if update.message.audio:
             file_id = update.message.audio.file_id
@@ -448,7 +394,7 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             file_id = update.message.document.file_id
 
     if not file_id:
-        await update.message.reply_text("⚠️ Invalid format. Please upload a Photo or File.")
+        await update.message.reply_text("⚠️ Invalid file format.")
         return UPLOAD_FILE
 
     if content_type not in data_db:
@@ -459,14 +405,7 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     data_db[content_type][subject][lec_num] = file_id
     save_data(data_db)
 
-    await update.message.reply_text(
-        f"✅ **Successfully Uploaded & Saved!**\n\n"
-        f"• Category: `{content_type}`\n"
-        f"• Subject: `{subject}`\n"
-        f"• Lecture: `{lec_num}`",
-        parse_mode="Markdown"
-    )
-
+    await update.message.reply_text("✅ Successfully Uploaded & Saved!")
     return ConversationHandler.END
 
 async def admin_delete_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -477,18 +416,18 @@ async def admin_delete_lecture(update: Update, context: ContextTypes.DEFAULT_TYP
     if subject in data_db.get(content_type, {}) and lec_num in data_db[content_type][subject]:
         del data_db[content_type][subject][lec_num]
         save_data(data_db)
-        await update.message.reply_text(f"🗑 **Successfully Deleted** Lecture `{lec_num}` from `{subject}` ({content_type}).", parse_mode="Markdown")
+        await update.message.reply_text(f"🗑 Deleted Lecture `{lec_num}`.")
     else:
-        await update.message.reply_text(f"❌ Lecture `{lec_num}` not found for `{subject}`.", parse_mode="Markdown")
+        await update.message.reply_text("❌ Lecture not found.")
 
     return ConversationHandler.END
 
 async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.message.edit_text("❌ Operation canceled.")
+        await update.callback_query.message.edit_text("❌ Canceled.")
     else:
-        await update.message.reply_text("❌ Operation canceled.")
+        await update.message.reply_text("❌ Canceled.")
     return ConversationHandler.END
 
 
@@ -509,7 +448,7 @@ if __name__ == '__main__':
             DELETE_LEC_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_delete_lecture)],
             UPLOAD_FILE: [
                 MessageHandler(
-                    filters.AUDIO | filters.VOICE | filters.DOCUMENT | filters.PHOTO, 
+                    filters.AUDIO | filters.VOICE | filters.Document.ALL | filters.PHOTO, 
                     admin_receive_file
                 ),
                 CallbackQueryHandler(admin_cancel, pattern="^cancel_admin$")
