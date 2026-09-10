@@ -13,14 +13,14 @@ from telegram.ext import (
     filters
 )
 
-# ----------------- الإعدادات والمتغيرات -----------------
+# ----------------- Configuration & Variables -----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8539162576:AAEGk8ooZssZ91Mc7Uv2DlYPvKLOHQtJyIQ")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "8744592769"))
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAQ.Ab8RN6KUiJjtaJJQTtBhkzZ5H61DWmtXcNYe8KcBU6kZ9KiJtA")
 
 DB_FILE = "database.json"
 
-# إعداد نموذج الذكاء الاصطناعي
+# Setup AI Model
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     ai_model = genai.GenerativeModel('gemini-1.5-flash')
@@ -29,10 +29,10 @@ else:
 
 user_quiz_state = {}
 
-# الحالات الخاصة بمحادثة الأدمن
+# Admin Conversation States
 SELECT_ACTION, SELECT_TYPE, SELECT_SUBJECT, INPUT_YEAR_TYPE, INPUT_LEC_NUM, UPLOAD_FILE, DELETE_LEC_NUM = range(7)
 
-# ----------------- إدارة ملف البيانات JSON -----------------
+# ----------------- Database Handlers -----------------
 def load_data():
     if os.path.exists(DB_FILE):
         try:
@@ -54,18 +54,18 @@ data_db = load_data()
 
 
 # =====================================================================
-# 1. واجهة الطالب (STUDENT INTERFACE)
+# 1. واجهة الطالب (STUDENT INTERFACE - ARABIC)
 # =====================================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("🎙 التسجيلات", callback_data="cat_recordings")],
-        [InlineKeyboardButton("📚 الشيتات (صور)", callback_data="cat_sheets")],
-        [InlineKeyboardButton("📝 امتحانات سابقة", callback_data="cat_exams")],
+        [InlineKeyboardButton("🎙 التسجيلات الصوتية", callback_data="cat_recordings")],
+        [InlineKeyboardButton("📚 الشيتات والمذكرات", callback_data="cat_sheets")],
+        [InlineKeyboardButton("📝 الامتحانات السابقة", callback_data="cat_exams")],
         [InlineKeyboardButton("📬 تواصل عبر مجهول", callback_data="cat_anonymous")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = "مرحباً بك في بوت المكتبة الدراسية! اختر قسماً من القائمة التالية:"
+    text = "مرحباً بك في بوت المكتبة الأكاديمية! اختر من القائمة التالية:"
     
     if update.message:
         await update.message.reply_text(text, reply_markup=reply_markup)
@@ -89,7 +89,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             [InlineKeyboardButton("القانون الجنائي", callback_data="rec_criminal")],
             [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")]
         ]
-        await query.message.edit_text("🎙 **قسم التسجيلات**\nاختر المادة:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.message.edit_text("🎙 **قسم التسجيلات الصوتية**\nاختر المادة المطلوبة:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     elif data.startswith("rec_"):
         await query.answer()
@@ -113,7 +113,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             keyboard.append(row)
             
         keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="cat_recordings")])
-        await query.message.edit_text("اختر المحاضرة الصوتية:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.message.edit_text("اختر المحاضرة للاستماع إليها:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("getaudio_"):
         await query.answer()
@@ -123,7 +123,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         if file_id:
             await query.message.reply_audio(audio=file_id, caption=f"🎙 تسجيل المحاضرة {lec_num} ({subject})")
         else:
-            await query.message.reply_text(f"⚠️ عفواً، لم يتم رفع المحاضرة {lec_num} لهذه المادة بعد.")
+            await query.message.reply_text(f"⚠️ المحاضرة {lec_num} غير متوفرة حالياً.")
 
     # ---------------- قسم الشيتات ----------------
     elif data == "cat_sheets":
@@ -133,7 +133,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             [InlineKeyboardButton("القانون الجنائي", callback_data="sheet_criminal")],
             [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")]
         ]
-        await query.message.edit_text("📚 **قسم الشيتات (الصور)**\nاختر المادة:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.message.edit_text("📚 **قسم الشيتات والمذكرات**\nاختر المادة المطلوبة:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     elif data.startswith("sheet_"):
         await query.answer()
@@ -142,7 +142,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         
         if not subject_data:
             keyboard = [[InlineKeyboardButton("🔙 رجوع", callback_data="cat_sheets")]]
-            await query.message.edit_text("⚠️ لا توجد صور شيتات متوفرة لهذه المادة حالياً.", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.message.edit_text("⚠️ لا توجد شيتات متوفرة لهذه المادة حالياً.", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
         available_lecs = sorted(subject_data.keys(), key=lambda x: int(x) if x.isdigit() else x)
@@ -157,7 +157,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             keyboard.append(row)
             
         keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="cat_sheets")])
-        await query.message.edit_text("اختر الشيت المطلوب لعرض الصورة:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.message.edit_text("اختر الشيت لعرضه:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("getsheet_"):
         await query.answer()
@@ -184,15 +184,15 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
                 )
         else:
             await query.message.reply_text(
-                f"⚠️ لم يتم رفع الشيت بعد، لكن يمكنك استخدام الاختبار الذكي للمحاضرة {lec_num}:",
+                f"⚠️ الشيت الخاص بالمحاضرة {lec_num} غير مرفوع، ولكن يمكنك بدء اختبار الذكاء الاصطناعي:",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
-    # ---------------- اختبار الذكاء الاصطناعي ----------------
+    # ---------------- قسم اختبار الذكاء الاصطناعي ----------------
     elif data.startswith("ai_quiz_"):
         await query.answer()
         if not ai_model:
-            await query.message.reply_text("⚠️ خيار الذكاء الاصطناعي غير مفعل.")
+            await query.message.reply_text("⚠️ خيار الذكاء الاصطناعي غير مفعل حالياً.")
             return
 
         _, subject, lec_num = data.split("_")
@@ -201,7 +201,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.message.reply_text("⏳ جاري توليد سؤال مقالي بناءً على المحاضرة...")
 
         try:
-            prompt = f"قم بتوليد سؤال مقالي دراسي مباشر واحد فقط لمادة {subject} المحاضرة {lec_num}. لا تضف أي إجابات أو خيارات."
+            prompt = f"قم بتوليد سؤال مقالي دراسي مباشر واحد فقط لمادة {subject} المحاضرة {lec_num}. لا تضف أي إجابات."
             response = ai_model.generate_content(prompt)
             question = response.text
 
@@ -212,7 +212,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             }
 
             await query.message.reply_text(
-                f"📝 **سؤال المحاضرة {lec_num} ({subject}):**\n\n{question}\n\n✍️ **اكتب إجابتك بالكامل في رسالة نصية:**",
+                f"📝 **سؤال المحاضرة {lec_num} ({subject}):**\n\n{question}\n\n✍️ **اكتب إجابتك النصية أسفل الرسالة لتصحيحها:**",
                 parse_mode="Markdown"
             )
         except Exception:
@@ -226,7 +226,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             [InlineKeyboardButton("2024", callback_data="exyear_2024")],
             [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")]
         ]
-        await query.message.edit_text("📝 **الامتحانات السابقة**\nاختر السنة:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.message.edit_text("📝 **الامتحانات السابقة**\nاختر السنة الدراسية:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     elif data.startswith("exyear_"):
         await query.answer()
@@ -234,7 +234,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         keyboard = [
             [InlineKeyboardButton("القانون المدني", callback_data=f"exsub_{year}_civil")],
             [InlineKeyboardButton("القانون الجنائي", callback_data=f"exsub_{year}_criminal")],
-            [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="cat_exams")]
+            [InlineKeyboardButton("🔙 رجوع", callback_data="cat_exams")]
         ]
         await query.message.edit_text(f"امتحانات سنة {year} - اختر المادة:", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -242,8 +242,8 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.answer()
         _, year, subject = data.split("_")
         keyboard = [
-            [InlineKeyboardButton("جزئي", callback_data=f"getexam_{year}_{subject}_mid")],
-            [InlineKeyboardButton("نهائي", callback_data=f"getexam_{year}_{subject}_final")],
+            [InlineKeyboardButton("امتحان جزئي", callback_data=f"getexam_{year}_{subject}_mid")],
+            [InlineKeyboardButton("امتحان نهائي", callback_data=f"getexam_{year}_{subject}_final")],
             [InlineKeyboardButton("🔙 رجوع", callback_data=f"exyear_{year}")]
         ]
         await query.message.edit_text("اختر نوع الامتحان:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -262,7 +262,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             except Exception:
                 await query.message.reply_photo(photo=file_id, caption=f"📁 نموذج امتحان {subject} - سنة {year} ({type_str})")
         else:
-            await query.message.reply_text(f"⚠️ عفواً، لم يتم رفع نموذج امتحان {subject} لسنة {year} ({type_str}) بعد.")
+            await query.message.reply_text(f"⚠️ نموذج الامتحان لمادة {subject} لسنة {year} ({type_str}) غير متوفر حالياً.")
 
     # ---------------- قسم التواصل المجهول ----------------
     elif data == "cat_anonymous":
@@ -272,7 +272,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
             [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")]
         ]
         await query.message.edit_text(
-            "📬 **تواصل عبر مجهول**\n\nيمكنك إرسال ملاحظاتك أو استفساراتك عبر الزر أدناه:",
+            "📬 **تواصل عبر مجهول**\n\nيمكنك إرسال استفساراتك أو ملاحظاتك عبر الرابط التالي:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
@@ -281,31 +281,31 @@ async def handle_student_answer(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = update.message.from_user.id
     if user_id in user_quiz_state:
         if not ai_model:
-            await update.message.reply_text("⚠️ خدمة الذكاء الاصطناعي معطلة حالياً.")
+            await update.message.reply_text("⚠️ تصحيح الذكاء الاصطناعي معطل حالياً.")
             return
 
         state = user_quiz_state[user_id]
         user_answer = update.message.text
-        await update.message.reply_text("🔍 جاري تصحيح إجابتك وتقييمها...")
+        await update.message.reply_text("🔍 جاري تقييم وتصحيح إجابتك...")
 
         try:
-            prompt = f"أنت مصحح أكاديمي.\nالسؤال: {state['question']}\nإجابة الطالب: {user_answer}\nقم بإعطاء نسبة مئوية وتصحيح مختصر."
+            prompt = f"أنت مصحح أكاديمي.\nالسؤال: {state['question']}\nإجابة الطالب: {user_answer}\nقم بإعطاء درجة مئوية وتصحيح مختصر جداً باللغة العربية."
             response = ai_model.generate_content(prompt)
-            await update.message.reply_text(f"📊 **نتيجة التقييم والتصحيح:**\n\n{response.text}", parse_mode="Markdown")
+            await update.message.reply_text(f"📊 **نتيجة التقييم:**\n\n{response.text}", parse_mode="Markdown")
         except Exception:
-            await update.message.reply_text("❌ حدث خطأ أثناء التصحيح.")
+            await update.message.reply_text("❌ حدث خطأ أثناء تقييم الإجابة.")
 
         del user_quiz_state[user_id]
 
 
 # =====================================================================
-# 2. لوحة تحكم الأدمن (ADMIN PANEL)
+# 2. ADMIN CONTROL PANEL (ENGLISH INTERFACE)
 # =====================================================================
 
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id != ADMIN_ID:
-        await update.message.reply_text("⛔ Access Denied.")
+        await update.message.reply_text(f"⛔ Access Denied. Your User ID is: {user_id}")
         return ConversationHandler.END
 
     keyboard = [
@@ -321,16 +321,16 @@ async def admin_select_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
 
     if query.data == "cancel_admin":
-        await query.message.edit_text("❌ Canceled.")
+        await query.message.edit_text("❌ Action canceled.")
         return ConversationHandler.END
 
     action = query.data.split("_")[1]
     context.user_data['admin_action'] = action
 
     keyboard = [
-        [InlineKeyboardButton("🎙 Recordings", callback_data="type_recordings")],
+        [InlineKeyboardButton("🎙 Recordations", callback_data="type_recordings")],
         [InlineKeyboardButton("🖼 Sheets", callback_data="type_sheets")],
-        [InlineKeyboardButton("📝 Exams (امتحانات)", callback_data="type_exams")],
+        [InlineKeyboardButton("📝 Past Exams", callback_data="type_exams")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
     ]
     await query.message.edit_text("📂 Select Category:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -341,7 +341,7 @@ async def admin_select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "cancel_admin":
-        await query.message.edit_text("❌ Canceled.")
+        await query.message.edit_text("❌ Action canceled.")
         return ConversationHandler.END
 
     content_type = query.data.split("_")[1]
@@ -360,7 +360,7 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
 
     if query.data == "cancel_admin":
-        await query.message.edit_text("❌ Canceled.")
+        await query.message.edit_text("❌ Action canceled.")
         return ConversationHandler.END
 
     subject = query.data.split("_")[1]
@@ -368,19 +368,19 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
     content_type = context.user_data.get('upload_type')
     action = context.user_data.get('admin_action')
 
-    # إذا كان خيار الامتحانات
+    # If category is Past Exams
     if content_type == "exams":
         keyboard = [
-            [InlineKeyboardButton("2023 - Mid (جزئي)", callback_data="exinfo_2023_mid")],
-            [InlineKeyboardButton("2023 - Final (نهائي)", callback_data="exinfo_2023_final")],
-            [InlineKeyboardButton("2024 - Mid (جزئي)", callback_data="exinfo_2024_mid")],
-            [InlineKeyboardButton("2024 - Final (نهائي)", callback_data="exinfo_2024_final")],
+            [InlineKeyboardButton("2023 - Midterm", callback_data="exinfo_2023_mid")],
+            [InlineKeyboardButton("2023 - Final", callback_data="exinfo_2023_final")],
+            [InlineKeyboardButton("2024 - Midterm", callback_data="exinfo_2024_mid")],
+            [InlineKeyboardButton("2024 - Final", callback_data="exinfo_2024_final")],
             [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
         ]
         await query.message.edit_text("📝 Select Exam Year & Type:", reply_markup=InlineKeyboardMarkup(keyboard))
         return INPUT_YEAR_TYPE
 
-    # التسجيلات والشيتات
+    # For Recordings or Sheets
     if action == "delete":
         available = data_db.get(content_type, {}).get(subject, {})
         if not available:
@@ -388,10 +388,10 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
             return ConversationHandler.END
             
         lecs_str = ", ".join(sorted(available.keys(), key=lambda x: int(x) if x.isdigit() else x))
-        await query.message.edit_text(f"🗑 Available lectures: `{lecs_str}`\nType lecture number to delete:", parse_mode="Markdown")
+        await query.message.edit_text(f"🗑 Available lectures: `{lecs_str}`\nType the lecture number to delete:", parse_mode="Markdown")
         return DELETE_LEC_NUM
     else:
-        await query.message.edit_text("📖 Type the Lecture Number (e.g. 1, 2):")
+        await query.message.edit_text("📖 Enter Lecture Number (e.g., 1, 2, 3):")
         return INPUT_LEC_NUM
 
 async def admin_input_year_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -399,7 +399,7 @@ async def admin_input_year_type(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
 
     if query.data == "cancel_admin":
-        await query.message.edit_text("❌ Canceled.")
+        await query.message.edit_text("❌ Action canceled.")
         return ConversationHandler.END
 
     _, year, exam_type = query.data.split("_")
@@ -413,9 +413,9 @@ async def admin_input_year_type(update: Update, context: ContextTypes.DEFAULT_TY
         if file_key in data_db.get("exams", {}):
             del data_db["exams"][file_key]
             save_data(data_db)
-            await query.message.edit_text(f"🗑 Deleted exam for `{file_key}`.")
+            await query.message.edit_text(f"🗑 Deleted exam record: `{file_key}`.", parse_mode="Markdown")
         else:
-            await query.message.edit_text(f"❌ Exam `{file_key}` not found.")
+            await query.message.edit_text(f"❌ Exam record `{file_key}` not found.", parse_mode="Markdown")
         return ConversationHandler.END
     else:
         await query.message.edit_text(f"📤 Please upload the Exam File (PDF/Image) for `{file_key}`:", parse_mode="Markdown")
@@ -424,16 +424,15 @@ async def admin_input_year_type(update: Update, context: ContextTypes.DEFAULT_TY
 async def admin_input_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lec_num = update.message.text.strip()
     if not lec_num.isdigit():
-        await update.message.reply_text("⚠️ Enter a valid number.")
+        await update.message.reply_text("⚠️ Please enter a valid lecture number.")
         return INPUT_LEC_NUM
 
     context.user_data['upload_lec'] = lec_num
-    await update.message.reply_text(f"📤 Upload the file for Lecture {lec_num}:")
+    await update.message.reply_text(f"📤 Upload the file/audio for Lecture {lec_num}:")
     return UPLOAD_FILE
 
 async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     content_type = context.user_data['upload_type']
-    
     file_id = None
 
     if content_type == "exams":
@@ -444,7 +443,7 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             file_id = update.message.photo[-1].file_id
 
         if not file_id:
-            await update.message.reply_text("⚠️ Invalid file format.")
+            await update.message.reply_text("⚠️ Invalid file type. Please send a Document or Image.")
             return UPLOAD_FILE
 
         if "exams" not in data_db:
@@ -452,10 +451,10 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
         data_db["exams"][file_key] = file_id
         save_data(data_db)
-        await update.message.reply_text(f"✅ Successfully Uploaded Exam `{file_key}`!")
+        await update.message.reply_text(f"✅ Successfully uploaded and saved Exam `{file_key}`!", parse_mode="Markdown")
         return ConversationHandler.END
 
-    # للأنواع الأخرى (تسجيلات وشيتات)
+    # For recordings or sheets
     subject = context.user_data['upload_subject']
     lec_num = context.user_data['upload_lec']
 
@@ -473,7 +472,7 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
             file_id = update.message.document.file_id
 
     if not file_id:
-        await update.message.reply_text("⚠️ Invalid file format.")
+        await update.message.reply_text("⚠️ Invalid file format. Please upload the appropriate file.")
         return UPLOAD_FILE
 
     if content_type not in data_db:
@@ -484,7 +483,7 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
     data_db[content_type][subject][lec_num] = file_id
     save_data(data_db)
 
-    await update.message.reply_text("✅ Successfully Uploaded & Saved!")
+    await update.message.reply_text("✅ Successfully saved to database!")
     return ConversationHandler.END
 
 async def admin_delete_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -495,23 +494,23 @@ async def admin_delete_lecture(update: Update, context: ContextTypes.DEFAULT_TYP
     if subject in data_db.get(content_type, {}) and lec_num in data_db[content_type][subject]:
         del data_db[content_type][subject][lec_num]
         save_data(data_db)
-        await update.message.reply_text(f"🗑 Deleted Lecture `{lec_num}`.")
+        await update.message.reply_text(f"🗑 Lecture `{lec_num}` deleted successfully.", parse_mode="Markdown")
     else:
-        await update.message.reply_text("❌ Lecture not found.")
+        await update.message.reply_text("❌ Lecture number not found.")
 
     return ConversationHandler.END
 
 async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.message.edit_text("❌ Canceled.")
+        await update.callback_query.message.edit_text("❌ Operation canceled.")
     else:
-        await update.message.reply_text("❌ Canceled.")
+        await update.message.reply_text("❌ Operation canceled.")
     return ConversationHandler.END
 
 
 # =====================================================================
-# 3. التشغيل الرئيسي
+# 3. MAIN BOT EXECUTION
 # =====================================================================
 
 if __name__ == '__main__':
@@ -545,5 +544,5 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(student_callback_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_student_answer))
 
-    print("🤖 Bot is running successfully...")
+    print("🤖 Bot is running...")
     app.run_polling()
