@@ -328,7 +328,7 @@ async def admin_select_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data['admin_action'] = action
 
     keyboard = [
-        [InlineKeyboardButton("🎙 Recordations", callback_data="type_recordings")],
+        [InlineKeyboardButton("🎙 Recordings", callback_data="type_recordings")],
         [InlineKeyboardButton("🖼 Sheets", callback_data="type_sheets")],
         [InlineKeyboardButton("📝 Past Exams", callback_data="type_exams")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
