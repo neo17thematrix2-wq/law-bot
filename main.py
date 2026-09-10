@@ -29,7 +29,8 @@ else:
 
 user_quiz_state = {}
 
-SELECT_ACTION, SELECT_TYPE, SELECT_SUBJECT, INPUT_LEC_NUM, UPLOAD_FILE, DELETE_LEC_NUM = range(6)
+# الحالات الخاصة بمحادثة الأدمن
+SELECT_ACTION, SELECT_TYPE, SELECT_SUBJECT, INPUT_YEAR_TYPE, INPUT_LEC_NUM, UPLOAD_FILE, DELETE_LEC_NUM = range(7)
 
 # ----------------- إدارة ملف البيانات JSON -----------------
 def load_data():
@@ -39,8 +40,8 @@ def load_data():
                 return json.load(f)
         except Exception as e:
             print(f"Error loading JSON: {e}")
-            return {"recordings": {}, "sheets": {}}
-    return {"recordings": {}, "sheets": {}}
+            return {"recordings": {}, "sheets": {}, "exams": {}}
+    return {"recordings": {}, "sheets": {}, "exams": {}}
 
 def save_data(data):
     try:
@@ -80,6 +81,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await start(update, context)
         return
 
+    # ---------------- قسم التسجيلات ----------------
     if data == "cat_recordings":
         await query.answer()
         keyboard = [
@@ -123,6 +125,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         else:
             await query.message.reply_text(f"⚠️ عفواً، لم يتم رفع المحاضرة {lec_num} لهذه المادة بعد.")
 
+    # ---------------- قسم الشيتات ----------------
     elif data == "cat_sheets":
         await query.answer()
         keyboard = [
@@ -185,6 +188,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
+    # ---------------- اختبار الذكاء الاصطناعي ----------------
     elif data.startswith("ai_quiz_"):
         await query.answer()
         if not ai_model:
@@ -214,6 +218,7 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         except Exception:
             await query.message.reply_text("❌ حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.")
 
+    # ---------------- قسم الامتحانات السابقة ----------------
     elif data == "cat_exams":
         await query.answer()
         keyboard = [
@@ -247,8 +252,19 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.answer()
         _, year, subject, exam_type = data.split("_")
         type_str = "جزئي" if exam_type == "mid" else "نهائي"
-        await query.message.reply_text(f"📁 نموذج امتحان {subject} - سنة {year} ({type_str})")
+        
+        file_key = f"{year}_{subject}_{exam_type}"
+        file_id = data_db.get("exams", {}).get(file_key)
 
+        if file_id:
+            try:
+                await query.message.reply_document(document=file_id, caption=f"📁 نموذج امتحان {subject} - سنة {year} ({type_str})")
+            except Exception:
+                await query.message.reply_photo(photo=file_id, caption=f"📁 نموذج امتحان {subject} - سنة {year} ({type_str})")
+        else:
+            await query.message.reply_text(f"⚠️ عفواً، لم يتم رفع نموذج امتحان {subject} لسنة {year} ({type_str}) بعد.")
+
+    # ---------------- قسم التواصل المجهول ----------------
     elif data == "cat_anonymous":
         await query.answer()
         keyboard = [
@@ -314,6 +330,7 @@ async def admin_select_action(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard = [
         [InlineKeyboardButton("🎙 Recordings", callback_data="type_recordings")],
         [InlineKeyboardButton("🖼 Sheets", callback_data="type_sheets")],
+        [InlineKeyboardButton("📝 Exams (امتحانات)", callback_data="type_exams")],
         [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
     ]
     await query.message.edit_text("📂 Select Category:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -322,12 +339,13 @@ async def admin_select_action(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def admin_select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     if query.data == "cancel_admin":
         await query.message.edit_text("❌ Canceled.")
         return ConversationHandler.END
 
-    context.user_data['upload_type'] = query.data.split("_")[1]
+    content_type = query.data.split("_")[1]
+    context.user_data['upload_type'] = content_type
 
     keyboard = [
         [InlineKeyboardButton("Civil Law (civil)", callback_data="sub_civil")],
@@ -347,12 +365,24 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
 
     subject = query.data.split("_")[1]
     context.user_data['upload_subject'] = subject
+    content_type = context.user_data.get('upload_type')
     action = context.user_data.get('admin_action')
 
+    # إذا كان خيار الامتحانات
+    if content_type == "exams":
+        keyboard = [
+            [InlineKeyboardButton("2023 - Mid (جزئي)", callback_data="exinfo_2023_mid")],
+            [InlineKeyboardButton("2023 - Final (نهائي)", callback_data="exinfo_2023_final")],
+            [InlineKeyboardButton("2024 - Mid (جزئي)", callback_data="exinfo_2024_mid")],
+            [InlineKeyboardButton("2024 - Final (نهائي)", callback_data="exinfo_2024_final")],
+            [InlineKeyboardButton("❌ Cancel", callback_data="cancel_admin")]
+        ]
+        await query.message.edit_text("📝 Select Exam Year & Type:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return INPUT_YEAR_TYPE
+
+    # التسجيلات والشيتات
     if action == "delete":
-        content_type = context.user_data['upload_type']
         available = data_db.get(content_type, {}).get(subject, {})
-        
         if not available:
             await query.message.edit_text(f"⚠️ No content found for `{subject}`.", parse_mode="Markdown")
             return ConversationHandler.END
@@ -363,6 +393,33 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await query.message.edit_text("📖 Type the Lecture Number (e.g. 1, 2):")
         return INPUT_LEC_NUM
+
+async def admin_input_year_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "cancel_admin":
+        await query.message.edit_text("❌ Canceled.")
+        return ConversationHandler.END
+
+    _, year, exam_type = query.data.split("_")
+    subject = context.user_data['upload_subject']
+    file_key = f"{year}_{subject}_{exam_type}"
+    context.user_data['exam_key'] = file_key
+
+    action = context.user_data.get('admin_action')
+
+    if action == "delete":
+        if file_key in data_db.get("exams", {}):
+            del data_db["exams"][file_key]
+            save_data(data_db)
+            await query.message.edit_text(f"🗑 Deleted exam for `{file_key}`.")
+        else:
+            await query.message.edit_text(f"❌ Exam `{file_key}` not found.")
+        return ConversationHandler.END
+    else:
+        await query.message.edit_text(f"📤 Please upload the Exam File (PDF/Image) for `{file_key}`:", parse_mode="Markdown")
+        return UPLOAD_FILE
 
 async def admin_input_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lec_num = update.message.text.strip()
@@ -376,10 +433,32 @@ async def admin_input_lecture(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     content_type = context.user_data['upload_type']
+    
+    file_id = None
+
+    if content_type == "exams":
+        file_key = context.user_data['exam_key']
+        if update.message.document:
+            file_id = update.message.document.file_id
+        elif update.message.photo:
+            file_id = update.message.photo[-1].file_id
+
+        if not file_id:
+            await update.message.reply_text("⚠️ Invalid file format.")
+            return UPLOAD_FILE
+
+        if "exams" not in data_db:
+            data_db["exams"] = {}
+            
+        data_db["exams"][file_key] = file_id
+        save_data(data_db)
+        await update.message.reply_text(f"✅ Successfully Uploaded Exam `{file_key}`!")
+        return ConversationHandler.END
+
+    # للأنواع الأخرى (تسجيلات وشيتات)
     subject = context.user_data['upload_subject']
     lec_num = context.user_data['upload_lec']
 
-    file_id = None
     if content_type == "recordings":
         if update.message.audio:
             file_id = update.message.audio.file_id
@@ -444,6 +523,7 @@ if __name__ == '__main__':
             SELECT_ACTION: [CallbackQueryHandler(admin_select_action)],
             SELECT_TYPE: [CallbackQueryHandler(admin_select_type)],
             SELECT_SUBJECT: [CallbackQueryHandler(admin_select_subject)],
+            INPUT_YEAR_TYPE: [CallbackQueryHandler(admin_input_year_type)],
             INPUT_LEC_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_input_lecture)],
             DELETE_LEC_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_delete_lecture)],
             UPLOAD_FILE: [
