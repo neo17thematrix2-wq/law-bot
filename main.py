@@ -1,6 +1,8 @@
 import json
 import os
 import logging
+import threading
+from flask import Flask
 import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -12,6 +14,17 @@ from telegram.ext import (
     ContextTypes,
     filters
 )
+
+# ----------------- Flask Keep-Alive Server -----------------
+web_app = Flask(__name__)
+
+@web_app.route('/')
+def home():
+    return "Bot is alive and running!", 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    web_app.run(host="0.0.0.0", port=port)
 
 # ----------------- Configuration & Variables -----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8539162576:AAEGk8ooZssZ91Mc7Uv2DlYPvKLOHQtJyIQ")
@@ -368,7 +381,6 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
     content_type = context.user_data.get('upload_type')
     action = context.user_data.get('admin_action')
 
-    # If category is Past Exams
     if content_type == "exams":
         keyboard = [
             [InlineKeyboardButton("2023 - Midterm", callback_data="exinfo_2023_mid")],
@@ -380,7 +392,6 @@ async def admin_select_subject(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.edit_text("📝 Select Exam Year & Type:", reply_markup=InlineKeyboardMarkup(keyboard))
         return INPUT_YEAR_TYPE
 
-    # For Recordings or Sheets
     if action == "delete":
         available = data_db.get(content_type, {}).get(subject, {})
         if not available:
@@ -454,7 +465,6 @@ async def admin_receive_file(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(f"✅ Successfully uploaded and saved Exam `{file_key}`!", parse_mode="Markdown")
         return ConversationHandler.END
 
-    # For recordings or sheets
     subject = context.user_data['upload_subject']
     lec_num = context.user_data['upload_lec']
 
@@ -514,6 +524,11 @@ async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =====================================================================
 
 if __name__ == '__main__':
+    # Start Flask Server in background thread for UptimeRobot Ping
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     admin_conv_handler = ConversationHandler(
