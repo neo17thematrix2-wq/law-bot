@@ -2,6 +2,7 @@ import json
 import os
 import logging
 import threading
+import asyncio
 from flask import Flask
 import google.generativeai as genai
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -89,14 +90,15 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     data = query.data
 
+    # الاستجابة الفورية لضغط الزر
+    await query.answer()
+
     if data == "main_menu":
-        await query.answer()
         await start(update, context)
         return
 
     # ---------------- قسم التسجيلات ----------------
-    if data == "cat_recordings":
-        await query.answer()
+    elif data == "cat_recordings":
         keyboard = [
             [InlineKeyboardButton("القانون المدني", callback_data="rec_civil")],
             [InlineKeyboardButton("القانون الجنائي", callback_data="rec_criminal")],
@@ -105,7 +107,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text("🎙 **قسم التسجيلات الصوتية**\nاختر المادة المطلوبة:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     elif data.startswith("rec_"):
-        await query.answer()
         subject = data.split("_")[1]
         subject_data = data_db.get("recordings", {}).get(subject, {})
         
@@ -129,7 +130,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text("اختر المحاضرة للاستماع إليها:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("getaudio_"):
-        await query.answer()
         _, subject, lec_num = data.split("_")
         file_id = data_db.get("recordings", {}).get(subject, {}).get(lec_num)
         
@@ -140,7 +140,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
 
     # ---------------- قسم الشيتات ----------------
     elif data == "cat_sheets":
-        await query.answer()
         keyboard = [
             [InlineKeyboardButton("القانون المدني", callback_data="sheet_civil")],
             [InlineKeyboardButton("القانون الجنائي", callback_data="sheet_criminal")],
@@ -149,7 +148,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text("📚 **قسم الشيتات والمذكرات**\nاختر المادة المطلوبة:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     elif data.startswith("sheet_"):
-        await query.answer()
         subject = data.split("_")[1]
         subject_data = data_db.get("sheets", {}).get(subject, {})
         
@@ -173,7 +171,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text("اختر الشيت لعرضه:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("getsheet_"):
-        await query.answer()
         _, subject, lec_num = data.split("_")
         file_id = data_db.get("sheets", {}).get(subject, {}).get(lec_num)
         
@@ -203,7 +200,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
 
     # ---------------- قسم اختبار الذكاء الاصطناعي ----------------
     elif data.startswith("ai_quiz_"):
-        await query.answer()
         if not ai_model:
             await query.message.reply_text("⚠️ خيار الذكاء الاصطناعي غير مفعل حالياً.")
             return
@@ -233,7 +229,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
 
     # ---------------- قسم الامتحانات السابقة ----------------
     elif data == "cat_exams":
-        await query.answer()
         keyboard = [
             [InlineKeyboardButton("2023", callback_data="exyear_2023")],
             [InlineKeyboardButton("2024", callback_data="exyear_2024")],
@@ -242,7 +237,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text("📝 **الامتحانات السابقة**\nاختر السنة الدراسية:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     elif data.startswith("exyear_"):
-        await query.answer()
         year = data.split("_")[1]
         keyboard = [
             [InlineKeyboardButton("القانون المدني", callback_data=f"exsub_{year}_civil")],
@@ -252,7 +246,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text(f"امتحانات سنة {year} - اختر المادة:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("exsub_"):
-        await query.answer()
         _, year, subject = data.split("_")
         keyboard = [
             [InlineKeyboardButton("امتحان جزئي", callback_data=f"getexam_{year}_{subject}_mid")],
@@ -262,7 +255,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
         await query.message.edit_text("اختر نوع الامتحان:", reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data.startswith("getexam_"):
-        await query.answer()
         _, year, subject, exam_type = data.split("_")
         type_str = "جزئي" if exam_type == "mid" else "نهائي"
         
@@ -279,7 +271,6 @@ async def student_callback_handler(update: Update, context: ContextTypes.DEFAULT
 
     # ---------------- قسم التواصل المجهول ----------------
     elif data == "cat_anonymous":
-        await query.answer()
         keyboard = [
             [InlineKeyboardButton("✉️ إرسال رسالة مجهولة", url="https://t.me/majho1bot")],
             [InlineKeyboardButton("🔙 القائمة الرئيسية", callback_data="main_menu")]
@@ -531,13 +522,14 @@ if __name__ == '__main__':
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # تخصيص أنماط أزرار الأدمن لحماية أزرار الطلاب
     admin_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('admin', admin_start)],
         states={
-            SELECT_ACTION: [CallbackQueryHandler(admin_select_action)],
-            SELECT_TYPE: [CallbackQueryHandler(admin_select_type)],
-            SELECT_SUBJECT: [CallbackQueryHandler(admin_select_subject)],
-            INPUT_YEAR_TYPE: [CallbackQueryHandler(admin_input_year_type)],
+            SELECT_ACTION: [CallbackQueryHandler(admin_select_action, pattern="^(action_|cancel_admin)")],
+            SELECT_TYPE: [CallbackQueryHandler(admin_select_type, pattern="^(type_|cancel_admin)")],
+            SELECT_SUBJECT: [CallbackQueryHandler(admin_select_subject, pattern="^(sub_|cancel_admin)")],
+            INPUT_YEAR_TYPE: [CallbackQueryHandler(admin_input_year_type, pattern="^(exinfo_|cancel_admin)")],
             INPUT_LEC_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_input_lecture)],
             DELETE_LEC_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_delete_lecture)],
             UPLOAD_FILE: [
@@ -551,7 +543,8 @@ if __name__ == '__main__':
         fallbacks=[
             CommandHandler('cancel', admin_cancel),
             CallbackQueryHandler(admin_cancel, pattern="^cancel_admin$")
-        ]
+        ],
+        per_message=False
     )
 
     app.add_handler(admin_conv_handler)
@@ -560,4 +553,5 @@ if __name__ == '__main__':
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_student_answer))
 
     print("🤖 Bot is running...")
-    app.run_polling()
+    # drop_pending_updates=True تضمن استجابة فورية وحذف أي تعارضات قديمة
+    app.run_polling(drop_pending_updates=True)
